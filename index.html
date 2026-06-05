@@ -1,30 +1,141 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="no">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Website</title>
+    <title>Interaktivt Datadashboard: Gaming & Karakterer</title>
+    
+    <script src="https://root.cern/js/latest/scripts/JSRoot.core.js" type="text/javascript"></script>
+
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f7f7f7; }
-        header { background: #4f46e5; color: #fff; padding: 1.5rem 2rem; text-align: center; }
-        nav { background: #6366f1; padding: 1rem 2rem; text-align: center; }
-        nav a { color: #fff; margin: 0 1rem; text-decoration: none; font-weight: bold; }
-        main { max-width: 700px; margin: 2rem auto; background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-        footer { text-align: center; color: #888; padding: 1rem 0; margin-top: 2rem; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            background-color: #f4f6f9;
+            color: #333;
+            margin: 0;
+            padding: 40px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        h1 { color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; }
+        
+        .control-panel {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            margin: 20px 0;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        label { font-weight: bold; color: #4a5568; }
+        
+        select {
+            padding: 8px 12px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: 1px solid #cbd5e0;
+            background-color: white;
+            cursor: pointer;
+            min-width: 300px;
+        }
+        select:focus { border-color: #3182ce; outline: none; }
+
+        #plot_container {
+            width: 100%;
+            height: 550px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background-color: #ffffff;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
-    <header>
-        <h1>TEST</h1>
-    </header>
-    <nav>
-        <a href="index.html">Home</a> |
-        <a href="291project.html">PHYS291</a> 
-    </nav>
-    <h1>Welcome to the Home Page</h1>
-    <p>This is the main page of the website.</p>
-    <footer>
-        &copy; 2026 Sindre Kvam
-    </footer>
+
+<div class="container">
+    <h1>Dataanalyse: Gaming vs. Akademiske Resultater</h1>
+    <p>Bruk menyen under for å utforske de ulike plottene og statistiske modellene generert fra C++ og ROOT.</p>
+
+    <div class="control-panel">
+        <label for="plotSelect">Velg analysevisning:</label>
+        <select id="plotSelect" onchange="endrePlot()">
+            <option value="grades_vs_gaming">Gjennomsnittskarakter vs. Gamingtimer (Med Fit)</option>
+            <option value="h_grades_vs_gaming">Gjennomsnittskarakter vs. Gamingtimer (2D-Histogram)</option>
+            <option value="grades_vs_study">Gjennomsnittskarakter vs. Studietimer (Med Fit)</option>
+            <option value="h_grades_vs_study">Gjennomsnittskarakter vs. Studietimer (2d-Histogram)</option>
+            <option value="h_reaction">Distribusjon av reaksjonstid (1D Histogram)</option>
+            <option value="h_reaction_fit">Distribusjon av reaksjonstid (1D Histogram med Fit)</option>
+            <option value="h_grades_vs_study_vs_gaming">Karakter vs. Studietimer vs. Gamingtimer (3D Histogram)</option>
+            <option value="grades_vs_study_vs_gaming">Gjennomsnittskarakter vs. Studietimer vs. Gamingtimer (2D Profile)</option>
+            <option value="samlet_tidsbruk">All tidsbruk samlet (MultiGraph)</option>
+            
+        </select>
+    </div>
+
+    <div id="plot_container"></div>
+
+</div>
+
+<script type="text/javascript">
+    // Global variabel for å holde på den åpnede ROOT-filen
+    let openRootFile = null;
+
+    // 1. Åpne ROOT-filen én gang når siden lastes inn
+    JSROOT.openFile("analysert_data.root")
+          .then(file => {
+              openRootFile = file;
+              // Tegn det første plottet automatisk ved oppstart
+              endrePlot();
+          })
+          .catch(err => {
+              console.error("Feil ved åpning av ROOT-fil:", err);
+              document.getElementById("plot_container").innerHTML = 
+                  "<p style='color:red; padding:20px;'>Kunne ikke laste 'analysert_data.root'. Sjekk at lokal server kjører.</p>";
+          });
+
+    // 2. Funksjon som kjører hver gang brukeren endrer menyen
+    function endrePlot() {
+        if (!openRootFile) return;
+
+        // Hent navnet på objektet brukeren har valgt
+        const tilgjengeligPlot = document.getElementById("plotSelect").value;
+        const container = document.getElementById("plot_container");
+
+        // Tøm containeren før vi tegner nytt plot (viktig for at de ikke lagrer seg oppå hverandre)
+        container.innerHTML = "<p style='padding:20px; color:#718096;'>Laster plot...</p>";
+
+        // Les det valgte objektet fra filen
+        openRootFile.readObject(tilgjengeligPlot)
+            .then(obj => {
+                // Tøm "Laster..." teksten
+                container.innerHTML = "";
+
+                // Bestem tegneinnstilling (Option) basert på hva slags plot det er
+                let drawOption = "E1"; // Standard for TProfile (Error bars)
+                
+                if (tilgjengeligPlot.includes("h_")) {
+                    drawOption = "hist"; // Standard for vanlige 1D histogrammer
+                }
+
+
+                // Tegn objektet interaktivt i div-en
+                JSROOT.draw("plot_container", obj, drawOption);
+            })
+            .catch(err => {
+                console.error("Kunne ikke lese objektet:", err);
+                container.innerHTML = "<p style='color:red; padding:20px;'>Feil: Fant ikke objektet '" + tilgjengeligPlot + "' i ROOT-filen.</p>";
+            });
+    }
+</script>
+
 </body>
 </html>
