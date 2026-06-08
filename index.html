@@ -87,7 +87,7 @@
     <p>Datasettet til dette prosjektet er en CSV fil: Gaming_Academic_Performance.csv. Denne er hentet fra https://www.kaggle.com/datasets/aiexplorer77/gaming-vs-academic-performance.
     Datasettet består av 8000 linjer hvor det er 14 kolonner. Kolonnene inneholder data om akademisk prestasjon, informasjon om studentenes gaming vaner 
     og noen andre relevante faktorer. I filen tree_loop.C blir det laget et TTree fra CSV dataen. Ved å bruke JSROOT sin draw() funksjon direkte på TTree kan alle kolonnene 
-    lages til histogrammer direkte i index.html. Alle plot kan interageres med ved å bruke musepekeren, f.eks kan legenden flyttes ved "dreg-and-drop".
+    lages til histogrammer direkte i index.html. Alle plot kan interageres med ved å bruke musepekeren, f.eks kan legenden flyttes ved "drag-and-drop".
     </p>
     <p>Bruk menyen under for å utforske de ulike kolonnene i datasettet.</p>
 
@@ -131,7 +131,7 @@
         </select>
     </div>
     <div class="control-panel">
-        <label for="plotSelect2">Velg analysevisning:</label>
+        <label for="plotSelect2">Velg sammenligning med Karakter:</label>
         <select id="plotSelect2" onchange="endrePlot2()">
             <option value="gaming_hours">Gamingtimer per dag</option>
             <option value="study_hours">Studietimer per dag</option>
@@ -155,22 +155,28 @@
 
 <div class="container">
     <h3>Videre databehandling</h3>
-    <p>Videre er det i csv_analyse.C er det plottet noen ekstra histogram, ett i 3D som kan beveges interaktivt og noen plot
-        med tilpassede linjer.
+    <p>Videre er det i csv_analyse.C plottet ett ekstra histogram i 3D som kan beveges interaktivt. i csv_analyse.C kjører jeg mange 
+        Fit() operasjoner på profil-plotene fra forrige del hvis x-aksen har "time" som enhet. Disse blir laget på nytt i denne filen ved å bruke RDataFrames istede for TTree
+        fordi det ga mer kontroll over antallet bins og x-aksens grenseverdier. Noen av Fit() funksjonene trengte flere kurver. Noen passer bra og andre har diskontinuiteter
+        der jeg ikke klarte å finne rett parametre for fit. Til slutt er samles alle i ett plot (TMultiGraph).
     </p>
 
     <div class="control-panel">
         <label for="plotSelect3">Velg analysevisning:</label>
         <select id="plotSelect3" onchange="endrePlot3()">
+            <option value="canvas">All tidsbruk samlet (MultiGraph uten Fit)</option>
+            <option value="canvas_fit">All tidsbruk samlet (MultiGraph med Fit)</option>
             <option value="grades_vs_gaming">Gjennomsnittskarakter vs. Gamingtimer (Med Fit)</option>
-            <option value="h_grades_vs_gaming">Gjennomsnittskarakter vs. Gamingtimer (2D-Histogram)</option>
             <option value="grades_vs_study">Gjennomsnittskarakter vs. Studietimer (Med Fit)</option>
-            <option value="h_grades_vs_study">Gjennomsnittskarakter vs. Studietimer (2d-Histogram)</option>
+            <option value="grades_vs._sleep">Gjennomsnittskarakter vs. Søvntimer (Med Fit)</option>
+            <option value="grades_vs._social">Gjennomsnittskarakter vs. Sosial aktivitet (Med Fit)</option>
+            <option value="grades_vs._device">Gjennomsnittskarakter vs. Enhetsbruk (Med Fit)</option>
             <option value="h_reaction">Distribusjon av reaksjonstid (1D Histogram)</option>
             <option value="h_reaction_fit">Distribusjon av reaksjonstid (1D Histogram med Fit)</option>
             <option value="h_grades_vs_study_vs_gaming">Karakter vs. Studietimer vs. Gamingtimer (3D Histogram)</option>
             <option value="grades_vs_study_vs_gaming">Gjennomsnittskarakter vs. Studietimer vs. Gamingtimer (2D Profile)</option>
-            <option value="samlet_tidsbruk">All tidsbruk samlet (MultiGraph)</option>
+
+            
             
         </select>
     </div>
@@ -308,7 +314,7 @@
                 container.innerHTML = "";
 
                 
-                let drawOption = "E1"; 
+                let drawOption = "E1 leg"; 
                 
                 if (tilgjengeligPlot.includes("h_")) {
                     drawOption = "hist"; 
