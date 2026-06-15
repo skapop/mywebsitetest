@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gaming & Karakterer</title>
+
+    <base target="_blank" rel = "noopener noreferrer">
     
     <style>
         body {
@@ -80,12 +82,87 @@
 <div class="container">
     <header>Prosjekt i PHYS291: Databehandling i fysikk</header>
     <h1>Gaming vs. Akademiske prestasjoner</h1>
-    <h2>Behandling av Data</h2>
+    <h2>Introduksjon</h2>
 
-    <p>Datasettet til dette prosjektet er en CSV fil: Gaming_Academic_Performance.csv. Denne er hentet fra https://www.kaggle.com/datasets/aiexplorer77/gaming-vs-academic-performance.
-    Datasettet består av 8000 linjer hvor det er 14 kolonner. Kolonnene inneholder data om akademisk prestasjon, informasjon om studentenes gaming vaner 
-    og noen andre relevante faktorer. I filen tree_loop.C blir det laget et TTree fra CSV dataen. Ved å bruke JSROOT sin draw() funksjon direkte på TTree kan alle kolonnene 
-    lages til histogrammer direkte i index.html. Alle plot kan interageres med ved å bruke musepekeren, f.eks kan legenden flyttes ved "drag-and-drop".
+    <p>I mitt prosjekt skal jeg se på et datasett som er hentet fra <a href="https://www.kaggle.com/datasets/aiexplorer77/gaming-vs-academic-performance">Kaggle</a>.
+    Datasettet er en CSV-fil med 14 kolonner som inneholder data om studenters akademiske prestasjoner og hvordan de bruker fritiden.
+    Datasettet har fokus på en hobby: Gaming. Med data om blant annet karakterer, oppmøte, hvor mange timer brukt på videospill, hvor sosial studenten er og mye mer. 
+    Med disse dataene ønsker jeg å undersøke hvordan de påvirker studentenes karakterer. 
+    </p>
+
+    <p>Jeg har hatt fokus på formidling av resultatene ved å legge inn interaktive elementer i denne HTML-rapporte. 
+    For å få de interaktive elementene må filen index.html åpnes gjennom en web-server. 
+    For å gjøre dette kjører du denne koden i terminalen der HTML-filen ligger: <code>python3 -m http.server 8000</code>.
+    Nå kan du i nettleseren gå til <a href="http://localhost:8000">http://localhost:8000</a> for å se filen med interaktive elementer.
+    De er også avhengig av at root filene dette prosjektet genererer finnes i samme mappe.
+    </p>
+</div>
+
+
+<div class="container">
+    <h2>Metode</h2>
+    
+    <h3>Beskrivelse av filer</h3>
+    <h4>Gaming_Academic_Performance.csv</h4>
+    <p>
+        Datasettet prosjektet bruker
+    </p>
+
+    <h4>csv_analyse.C</h4>
+    <p>
+        Denne filen leser en csv-fil og behandler det med RDataFrame objektet. Lager filen <i>analysert_data.root</i>
+    </p>
+
+    <h4>tree_loop.C</h4>
+    <p>
+        Denne filen leser en csv-fil og gjør det til et TTree objekt. Lager filene <i>CSVTree.root</i> og <i>tree_analysert.root</i>
+    </p>
+
+    <h3>JSROOT</h3>
+    <p>
+        For å presentere resultatene på en ryddig måte har jeg valgt at ingen av filene produserer plot lokalt på maskinen siden resultatene uansett skal vises på denne html-siden.
+        ROOT har et eksisterende javascript bibliotek JSROOT som lager interaktive elementer fra root-filer. 
+        Denne html-filen leser objektene fra de tre root-filene og lar leseren velge hvilket objekt som skal vises fra en rullegardinmeny.
+        Alle plot kan med JSROOT zoomes, flyttes og interageres med av brukeren, ved å holde musepekeren over et datapunkt vil det også dukke opp utfyllende informasjon.
+
+    </p>
+
+    <p>        Måten dette virker er at hver rullegardin er tilknyttet hver sin root-fil. Den første menyen velger elementer fra CSVTree.root, den andre fra tree_analysert.root og den siste fra analysert_data.root. 
+        Ved å velge et objekt i menyen sjekker JSROOT om det er et objekt i root-filen med samme navn som value-variabelen fra
+        menyen. Hvis det er det endres plottet i vinduet til dette ved endrePlot funksjonene som bruker JSROOT sin draw funksjon til å plotte.
+        Det er en endrePlot funksjon per vindu, totalt 3, en for hver fil.
+    </p>
+
+    <h3>Databehandling</h3>
+    <p>Dette prosjektet benytter seg av to av root sine klasser for å behandle data. TTree og RDataFrame. TTree er et robust og allsidig objekt og RDataFrame er nytt i root og tar inspirasjon fra mer moderne databehandlingsverktøy f.eks. pandas i python.</p>
+    
+    <h4>RDataFrame vs TTree</h4>
+    <p>
+        Først og fremst er RDataFrame mye mer effektivt med tanke på prosessorkraft, de fleste funksjonene er «lazy acktion» som betyr at kommandoen settes til minnet, men ikke utføres før en «non-lazy action» utføres. Dette lar deg kjøre gjennom større datasett mer effektivt. I tillegg kan man kjøre RDataFrame flertrådet i prosessoren noe TTree ikke kan. 
+Slik prosjektet endte opp brukte jeg RDataFrame til å lese csv filen og så begynte jeg å behandle ett og ett plott med kurvetilpasninger (FIT) og da var det enklest å fortsette med RDataFrame. Når jeg ønsket å produsere et histogram per kolonne ville dette vært tungvint å gjøre manuelt så jeg lagde en løkke (loop). Dette var mer allsidig og enkelt med et TTree så jeg endte opp med å bruke TTree også. Rett verktøy til rett jobb rett og slett
+
+    </p>
+    
+    <h4>CSV til root</h4>
+    <p>For å behandle data må den være på en form som root kan bruke. For å lese csv-filen brukes RDataFrame også når det skal lages til et TTree.
+    Dette er fordi i den innebygde funksjonen til TTree som leser csv må man fjerne første linje av datasettet der kolonnenes navn er definert og legge de til TTree manuelt. 
+    RDataFrame gjør dette automatisk. Når man bruker RDataFrame skriver den TTree til en root fil for deg.</p>
+
+    
+    <h4>Plot og tilpasning av linjer</h4>
+    <P>Alle plot skal vises med JSROOT, men alle objektene må genereres. Jeg bruker en kombinasjon av TTree og RDataFrame til dette.
+        I filen tree_loop.C bruker lages et TTree av dataen og en løkke til å lage 2D histogrammer som sammenlikner karakter kolonnen med alle andre kolonner.
+        Videre ønsket jeg å se nærmere på hvordan studenter bruker tiden sin påvirker karakterer. Dette ser jeg nærmere på i csv_analyse.C. Her bruker jeg RDataFrame til å lage error-bar plot og tilpasse linjer til de. Alle tilpasningene er funnet ved "trial an error" siden det ikke følger noen form for fordeling og noen av datapunktene er sporadiske.
+    </P>
+
+    
+</div>
+
+<div class="container">
+    <h2>Resultater</h2>
+    <h3>Datasettet som histogrammer</h3>
+
+    <p>Datasettet kan illustreres som et histogram per kolonne. Her har JSROOT lest CSVTree.root og plotter direkte hver branch (kolonne) som et histogram rett fra javascript koden avhengig av hvilket histogram du velger.
     </p>
     <p>Bruk menyen under for å utforske de ulike kolonnene i datasettet.</p>
 
@@ -110,14 +187,14 @@
     </div>
 
     <div id="plot_container1"></div>
-
+    
 </div>
 
 <div class="container">
-    <h3>Dataanalyse: Gaming vs. Akademiske Resultater</h3>
+    <h3>Sammenlikning av kolonner</h3>
     <p>Videre i tree_loop.C blir alle kolonnene i datasettet sammenliknet med karakter kolonnen. Alle sammenlikningene gjøres til et histogram (TH2F) og et profil-plot
         (TProfile). Histogrammet er bare to histogram på hver sin akse med antall tellinger representert i farge. Et profil-plot har et histogram på x-aksen, men på y aksen er gjennomsnittskarakteren 
-        til hver bin fra histogrammet. Det ser derfor ut som et error-bar plot. 
+        til hver bin fra histogrammet. Det ser derfor ut som et error-bar plot. Her leser JSROOT tree_analysert.root
      </p>
     <p>Bruk menyen under for å se sammenhengene med karakter.</p>
 
@@ -153,10 +230,10 @@
 
 <div class="container">
     <h3>Videre databehandling</h3>
-    <p>Videre er det i csv_analyse.C plottet ett ekstra histogram i 3D som kan beveges interaktivt. i csv_analyse.C kjører jeg mange 
-        Fit() operasjoner på profil-plotene fra forrige del hvis x-aksen har "time" som enhet. Disse blir laget på nytt i denne filen ved å bruke RDataFrames istede for TTree
+    <p>Videre er det i csv_analyse.C plottet ett ekstra histogram i 3D som kan beveges interaktivt. I csv_analyse.C vil jeg se på hvordan studenter bruker tiden sin og hvordan det påvirker karakterer. Derfor kjører jeg mange 
+        Fit() operasjoner på profil-plotene fra forrige del hvis x-aksen har "time" som enhet. Disse blir laget på nytt i denne filen ved å bruke RDataFrame isteden for TTree
         fordi det ga mer kontroll over antallet bins og x-aksens grenseverdier. Noen av Fit() funksjonene trengte flere kurver. Noen passer bra og andre har diskontinuiteter
-        der jeg ikke klarte å finne rett parametre for fit. Til slutt er samles alle i ett plot (TMultiGraph).
+        der jeg ikke klarte å finne rett parametre for fit. Til slutt samles alle i ett plot (TMultiGraph). Her leser JSROOT analysert_data.root
     </p>
 
     <div class="control-panel">
@@ -183,24 +260,63 @@
 
 </div>
 
+
+
+<div class="container">
+    <h2>Problem med chrome</h2>
+    <p>
+        I første innlevering hadde Chromium baserte nettlesere problemer med de interaktive javascript elementene JSROOT lagde. Dette er fordi måten jeg orginalt hentet JSROOT script på bryter med Chrome sine sikkerhetsregler. Dette er linjen som er feil og må fjernes:
+        <pre>
+            <code>
+                &lt;script type="text/javascript" src="https://root.cern/js/latest/scripts/JSRoot.core.js"&gt;&lt;/script&gt;
+            </code>
+        </pre>
+Denne må byttes ut med en importering av de modulene jeg ønsker. Ved å endre starten av javascript delen til:
+<pre>
+            <code>
+                &lt;script type="module"&gt;
+                import {draw, openFile} from 'https://root.cern/js/latest/modules/main.mjs'
+
+                ...
+                &lt;/script&gt;
+            </code>
+        </pre>
+Dette gjør at script delen ikke lenger er global så funksjonene definert der inne for å endre plot må gjøres globale ved å legge de til window.
+
+    </p>
+
+</div>
+
+<div class="container">
+    <h2>Diskusjon</h2>
+    <p>
+      Dette prosjektet har vært for det meste vellykket, bortsett fra problemene med å vise JSROOT elementene i chrome. Plotene og linjetilpasningene har gjort det mulig å se på sammenlikninger mellom fritidsbruk og karakterer.
+      Jeg er også veldig fornøyd med måten jeg fikk JSROOT til å fungere slik at det ikke er behov for å lage alle plot som png, med den fordelen av at alle plotene kan interageres med av leseren som kan se på punkt/søyle verdier, zoome og flytte på elementer i nettleservinduet. 
+    </p>
+   
+
+</div>
+
+
+
 <script type="module">
 
     import {draw, openFile} from 'https://root.cern/js/latest/modules/main.mjs'
-    // Global variabel for åpen ROOT-filen
+    // variabel for åpen ROOT-fil
     let openFiles = {
         f1: null,
         f2: null,
         f3: null
     };
 
-    // 1. Åpne ROOT-filene når siden lastes inn
+    // Åpne ROOT-filene når siden lastes inn
     Promise.all([
     openFile("CSVTree.root"), 
     openFile("tree_analysert.root"),
     openFile("analysert_data.root")
     ])
     .then(([file1, file2, file3]) => {
-    // Lagre filene i det globale objektet
+    // Lagre filene i objektet
     openFiles.f1 = file1;
     openFiles.f2 = file2;
     openFiles.f3 = file3;
@@ -214,8 +330,12 @@
 })
 .catch(err => {
     console.error("Feil ved åpning av en eller flere ROOT-filer:", err);
-    document.getElementById("plot_container").innerHTML = 
-        "<p style='color:red; padding:20px;'>Kunne ikke laste ROOT-filene. Sjekk at alle filnavn er riktige og at lokal server kjører.</p>";
+    document.getElementById("plot_container1").innerHTML = 
+        "<p style='color:red; padding:20px;'>Kunne ikke laste ROOT-filene. HTML-filen krever at lokal server kjører.</p>";
+    document.getElementById("plot_container2").innerHTML = 
+        "<p style='color:red; padding:20px;'>Kunne ikke laste ROOT-filene. HTML-filen krever at lokal server kjører.</p>";
+    document.getElementById("plot_container3").innerHTML = 
+        "<p style='color:red; padding:20px;'>Kunne ikke laste ROOT-filene. HTML-filen krever at lokal server kjører.</p>";
 });
 
     
@@ -310,7 +430,6 @@
         
         openFiles.f3.readObject(tilgjengeligPlot)
             .then(obj => {
-                // Tøm "Laster..." teksten
                 container.innerHTML = "";
 
                 
@@ -329,6 +448,7 @@
                 container.innerHTML = "<p style='color:red; padding:20px;'>Feil: Fant ikke objektet '" + tilgjengeligPlot + "' i ROOT-filen.</p>";
             });
     }
+    // Må gjøre funksjonene globale for å bruke de i rullegardinmenyene
     window.endrePlot1 = endrePlot1
     window.endrePlot2 = endrePlot2
     window.endrePlot3 = endrePlot3
