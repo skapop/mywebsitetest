@@ -19,17 +19,20 @@
     .btn-submit:disabled { background: #6c757d; cursor: not-allowed; }
     .winner-card { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 20px; border-radius: 8px; text-align: center; font-size: 1.3rem; font-weight: bold; }
     .voter-info { font-size: 0.85rem; color: #6c757d; text-align: right; margin-bottom: 10px; }
+    .live-indicator { display: inline-block; width: 8px; height: 8px; background: #28a745; border-radius: 50%; margin-right: 5px; }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="voter-info">Din ID: <span id="voterCodeDisplay"></span></div>
+    <div class="voter-info">
+      <span class="live-indicator"></span>Tilkoblet | Din ID: <span id="voterCodeDisplay"></span>
+    </div>
 
-    <!-- Venter / Aktivt Valg -->
+    <!-- Hovedinnhold -->
     <div id="mainContent">
       <div class="card" id="statusCard">
         <h2 id="statusTitle">Laster valg...</h2>
-        <p id="statusDesc">Vennligst vent mens admin forbereder neste valgomgang.</p>
+        <p id="statusDesc">Vennligst vent mens admin forbereder næste valgomgang.</p>
       </div>
 
       <!-- Stemmeskjema -->
@@ -56,12 +59,12 @@
   <script type="module">
     import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
-    // SUPABASE CONFIGURATION - ERSTATT MED DINE NØKLER
-    const SUPABASE_URL = 'https://qtsfzbqkgjifcfceihre.supabase.co';
-    const SUPABASE_ANON_KEY = 'sb_publishable_4IZSLlq7DM_vyw_V0tUj9w_TlZ7Zswu';
+    // ERSTATT MED DINE NØKLER
+    const SUPABASE_URL = 'DIN_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'DIN_SUPABASE_ANON_KEY';
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Generer eller hent anonym stemmekode for denne nettleseren
+    // Generer eller hent anonym stemmekode for denne enheten
     let voterCode = localStorage.getItem('gf_voter_code');
     if (!voterCode) {
       voterCode = 'voter_' + Math.random().toString(36).substring(2, 10);
@@ -85,68 +88,77 @@
     const winnerText = document.getElementById('winnerText');
 
     async function checkState() {
-      // Finn det aktuelt aktive valget eller det sist avsluttede med synlig resultat
-      const { data: elections } = await supabase.from('elections').select('*').order('position_number', { ascending: true });
+      // Hent alle valg sortert etter rekkefølge
+      const { data: elections, error } = await supabase
+        .from('elections')
+        .select('*')
+        .order('position_number', { ascending: true });
 
-      if (!elections) return;
+      if (error || !elections) return;
 
+      // 1. Sjekk om det finnes et aktivt valg akkurat nå
       const active = elections.find(e => e.status === 'active');
+
+      // 2. Sjekk om det sist fullførte valget skal vise resultat
       const finishedWithResult = elections.slice().reverse().find(e => e.status === 'finished' && e.result_visible);
 
       if (active) {
+        // Dersom vi har byttet til et nytt aktivt valg, nullstill lokal stemmestatus
         if (!activeElection || activeElection.id !== active.id) {
           activeElection = active;
           userRanking = [];
           hasVoted = false;
-          await loadActiveElection();
         } else {
-          await checkIfVoted();
+          activeElection = active;
         }
+        await loadActiveElection();
       } else if (finishedWithResult) {
         activeElection = finishedWithResult;
         await showWinner(finishedWithResult);
       } else {
         activeElection = null;
-        showWaiting('Ingen aktiv avstemning', 'Neste valgomgang har ikke startet ennå. Siden oppdateres automatisk.');
+        showWaiting('Ingen aktiv avstemning', 'Venter på at admin skal starte neste valgomgang...');
       }
     }
 
     async function loadActiveElection() {
       winnerCard.style.display = 'none';
 
-      // Sjekk om bruker allerede har stemt
       await checkIfVoted();
 
       if (hasVoted) {
-        showWaiting(activeElection.position_name, 'Takk! Din stemme er registrert. Venter på at avstemningen avsluttes...');
+        showWaiting(activeElection.position_name, 'Takk! Din stemme er registrert. Venter på at admin avslutter og viser resultatet...');
         return;
       }
 
       posTitle.textContent = `Stem på: ${activeElection.position_name}`;
       
-      // Hent kandidater
-      const { data } = await supabase.from('candidates').select('*').eq('election_id', activeElection.id);
+      // Hent kandidater for det aktive valget
+      const { data } = await supabase
+        .from('candidates')
+        .select('*')
+        .eq('election_id', activeElection.id);
+      
       candidates = data || [];
 
       renderCandidates();
       renderRanking();
 
-      statusTitle.textContent = `Avstemning pågår`;
-      statusDesc.textContent = `Aktiv posisjon: ${activeElection.position_name}`;
+      statusTitle.textContent = `Aktiv avstemning: ${activeElection.position_name}`;
+      statusDesc.textContent = `Velg kandidatene i ønsket rekkefølge nedenfor.`;
       votingCard.style.display = 'block';
     }
 
     async function checkIfVoted() {
       if (!activeElection) return;
-      const { data } = await supabase.from('votes')
+      const { data } = await supabase
+        .from('votes')
         .select('id')
         .eq('election_id', activeElection.id)
         .eq('voter_code', voterCode)
         .maybeSingle();
       
-      if (data) {
-        hasVoted = true;
-      }
+      hasVoted = !!data;
     }
 
     function renderCandidates() {
@@ -172,7 +184,7 @@
         const cand = candidates.find(c => c.id === candId);
         const li = document.createElement('li');
         li.className = 'ranking-item';
-        li.innerHTML = `<span>${cand ? cand.name : ''}</span>
+        li.innerHTML = `<span>${idx + 1}. ${cand ? cand.name : ''}</span>
                         <button class="remove-btn" onclick="removeFromRanking(${idx})">Fjern</button>`;
         rankingList.appendChild(li);
       });
@@ -198,29 +210,30 @@
       }]);
 
       if (error) {
-        alert('Kunne ikke avgi stemme (du har kanskje allerede stemt).');
+        alert('Kunne ikke avgi stemme (du har sannsynligvis allerede stemt).');
       } else {
         hasVoted = true;
         votingCard.style.display = 'none';
-        showWaiting(activeElection.position_name, 'Din stemme er registrert. Venter på resultat...');
+        showWaiting(activeElection.position_name, 'Takk! Din stemme er registrert. Venter på at admin skal vise resultatet...');
       }
       submitVoteBtn.disabled = false;
     });
 
     async function showWinner(election) {
       votingCard.style.display = 'none';
-      const { data: winners } = await supabase.from('winners')
+      const { data: winners } = await supabase
+        .from('winners')
         .select('candidates(name)')
         .eq('election_id', election.id);
 
       if (winners && winners.length > 0) {
-        const winnerNames = winners.map(w => w.candidates.name).join(', ');
-        statusTitle.textContent = `Resultat: ${election.position_name}`;
-        statusDesc.textContent = 'Valget er fullført.';
+        const winnerNames = winners.map(w => w.candidates?.name || 'Ukjent').join(', ');
+        statusTitle.textContent = `Valg fullført: ${election.position_name}`;
+        statusDesc.textContent = 'Resultat for denne omgangen:';
         winnerText.innerHTML = `🏆 Valgt vinner: <br><strong>${winnerNames}</strong>`;
         winnerCard.style.display = 'block';
       } else {
-        showWaiting('Venter...', 'Beregner resultat...');
+        showWaiting(election.position_name, 'Beregner og henter resultat...');
       }
     }
 
@@ -231,14 +244,25 @@
       winnerCard.style.display = 'none';
     }
 
-    // Lytt til sanntidsoppdateringer fra Supabase
+    // LYTT PÅ SANNTIDSENDRINGER FRA SUPABASE
     function subscribeRealtime() {
-      supabase.channel('public-changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'elections' }, () => checkState())
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'winners' }, () => checkState())
+      supabase.channel('global-updates')
+        // Lytt til alle endringer i elections-tabellen (f.eks. når status endres eller result_visible endres)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'elections' }, () => {
+          checkState();
+        })
+        // Lytt til endringer i candidates-tabellen (f.eks. om admin legger til nye kandidater)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'candidates' }, () => {
+          if (activeElection) loadActiveElection();
+        })
+        // Lytt til endringer i winners-tabellen (når vinnere regnes ut)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'winners' }, () => {
+          checkState();
+        })
         .subscribe();
     }
 
+    // Start
     checkState();
     subscribeRealtime();
   </script>
