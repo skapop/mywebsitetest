@@ -1,36 +1,117 @@
-<!doctype html>
-<html lang="no">
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Generalforsamling – Avstemning</title>
-  <link rel="stylesheet" href="style.css">
+  <title>Test Projects</title>
+  <style>
+    :root {
+      --bg: #fafaf7;
+      --text: #1d1f23;
+      --muted: #6a6f78;
+      --line: #dcdcd4;
+      --accent: #2456d6;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16181c;
+        --text: #e8e9ec;
+        --muted: #9096a0;
+        --line: #2c3037;
+        --accent: #7ba2ff;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      max-width: 40rem;
+      margin: 0 auto;
+      padding: 4rem 1.5rem;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      margin: 0 0 0.25rem;
+    }
+
+    .intro {
+      color: var(--muted);
+      margin: 0 0 2rem;
+    }
+
+    ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      border-top: 1px solid var(--line);
+    }
+
+    li { border-bottom: 1px solid var(--line); }
+
+    a {
+      display: block;
+      padding: 1rem 0.5rem;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    a:hover, a:focus-visible {
+      background: color-mix(in srgb, var(--accent) 8%, transparent);
+    }
+
+    a:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
+
+    .name {
+      display: block;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .desc {
+      display: block;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+  </style>
 </head>
 <body>
-<header>
-  <div class="brand"><div class="header-logo" id="headerLogo"></div><h1>Generalforsamling</h1></div>
-  <span id="statusBadge" class="badge">Ikke startet</span>
-</header>
-<main>
-  <section class="card" id="votingView">
-    <h2 id="electionTitle">Ingen aktiv avstemning</h2>
-    <p id="instruction">Vent på at admin starter neste avstemning.</p>
-    <div id="voterCodeBox" class="voter-code" hidden>
-      <label for="voterCode">Din stemmekode</label>
-      <input id="voterCode" autocomplete="off" placeholder="Skriv inn koden du har fått">
-      <small>Koden brukes for å hindre at samme kode stemmer flere ganger.</small>
-    </div>
-    <div id="voteArea"></div>
-    <button id="submitVote" class="primary" hidden>Lever stemme</button>
-  </section>
-  <section class="card" id="resultView" hidden>
-    <h2>Resultat</h2>
-    <div id="resultContent"></div>
-  </section>
-</main>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/supabase.js"></script>
-<script src="js/stv.js"></script>
-<script src="js/app.js"></script>
+  <main>
+    <h1>Test Projects</h1>
+    <p class="intro">Pick a project to open it.</p>
+
+    <!-- To add a project, copy one <li> block and change the href, name and description. -->
+    <ul>
+      <li>
+        <a href="/project-one/">
+          <span class="name">Project One</span>
+          <span class="desc">Short description of what this tests</span>
+        </a>
+      </li>
+      <li>
+        <a href="/project-two/">
+          <span class="name">Project Two</span>
+          <span class="desc">Short description of what this tests</span>
+        </a>
+      </li>
+      <li>
+        <a href="/project-three/">
+          <span class="name">Project Three</span>
+          <span class="desc">Short description of what this tests</span>
+        </a>
+      </li>
+    </ul>
+  </main>
 </body>
 </html>
