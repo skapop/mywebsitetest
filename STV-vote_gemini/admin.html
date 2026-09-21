@@ -225,63 +225,69 @@
       voteCount.textContent = count || 0;
     }
 
-    // Beregn vinner ved hjelp av STV og kvoteringssjekk på tvers av tidligere posisjoner
-    calcBtn.addEventListener('click', async () => {
-      if (!currentElection) return;
+    // Beregn vinner (automatisk ved 1 kandidat, eller via STV ved flere)
+calcBtn.addEventListener('click', async () => {
+  if (!currentElection) return;
 
-      // 1. Hent alle stemmer for dette valget
-      const { data: votes } = await supabase.from('votes').select('ranking').eq('election_id', currentElection.id);
+  let winningCandidates = [];
 
-      // 2. Sjekk hvor mange fra kvotegruppen som allerede har vunnet i tidligere poser
-      const targetGroup = 'Undergruppe';
-      let alreadyFilled = 0;
+  // 1. Sjekk om antall kandidater er mindre enn eller lik antall seter (f.eks. kun 1 kandidat)
+  if (candidates.length > 0 && candidates.length <= currentElection.seats) {
+    // Alle kandidatene vinner automatisk!
+    winningCandidates = [...candidates];
+  } else if (candidates.length > currentElection.seats) {
+    // 2. Hvis det er kamp om plassene, hent stemmer og kjør STV
+    const { data: votes } = await supabase
+      .from('votes')
+      .select('ranking')
+      .eq('election_id', currentElection.id);
 
-      const { data: allWinners } = await supabase.from('winners').select('candidate_id, candidates(group_name)');
-      if (allWinners) {
-        alreadyFilled = allWinners.filter(w => w.candidates?.group_name?.trim().toLowerCase() === targetGroup.toLowerCase()).length;
-      }
+    // Sjekk hvor mange fra kvotegruppen ("Undergruppe") som allerede har vunnet
+    const targetGroup = 'Undergruppe';
+    let alreadyFilled = 0;
 
-      // 3. Kjør STV
-      const winningCandidates = calculateSTV(
-        candidates,
-        votes || [],
-        currentElection.seats,
-        currentElection.representation_enabled,
-        targetGroup,
-        currentElection.representation_required,
-        alreadyFilled
-      );
+    const { data: allWinners } = await supabase
+      .from('winners')
+      .select('candidate_id, candidates(group_name)');
 
-      // 4. Lagre vinnere i databasen
-      await supabase.from('winners').delete().eq('election_id', currentElection.id);
-      if (winningCandidates.length > 0) {
-        const winnerInserts = winningCandidates.map(w => ({
-          election_id: currentElection.id,
-          candidate_id: w.id
-        }));
-        await supabase.from('winners').insert(winnerInserts);
-      }
-
-      // 5. Gjør resultat synlig for alle
-      await supabase.from('elections').update({ result_visible: true, status: 'finished' }).eq('id', currentElection.id);
-
-      await loadWinners();
-      await loadElections();
-    });
-
-    async function loadWinners() {
-      const { data: winners } = await supabase.from('winners')
-        .select('candidate_id, candidates(name)')
-        .eq('election_id', currentElection.id);
-
-      if (winners && winners.length > 0 && currentElection.result_visible) {
-        const names = winners.map(w => w.candidates.name).join(', ');
-        winnerBox.innerHTML = `🏆 Vinner(e): <strong>${names}</strong>`;
-        winnerContainer.style.display = 'block';
-      } else {
-        winnerContainer.style.display = 'none';
-      }
+    if (allWinners) {
+      alreadyFilled = allWinners.filter(w => 
+        w.candidates?.group_name?.trim().toLowerCase() === targetGroup.toLowerCase()
+      ).length;
     }
+
+    // Kjør STV-beregning
+    winningCandidates = calculateSTV(
+      candidates,
+      votes || [],
+      currentElection.seats,
+      currentElection.representation_enabled,
+      targetGroup,
+      currentElection.representation_required,
+      alreadyFilled
+    );
+  }
+
+  // 3. Lagre vinnerne i databasen
+  await supabase.from('winners').delete().eq('election_id', currentElection.id);
+
+  if (winningCandidates.length > 0) {
+    const winnerInserts = winningCandidates.map(w => ({
+      election_id: currentElection.id,
+      candidate_id: w.id
+    }));
+    await supabase.from('winners').insert(winnerInserts);
+  }
+
+  // 4. Gjør resultatet synlig for alle i sanntid
+  await supabase.from('elections').update({ 
+    result_visible: true, 
+    status: 'finished' 
+  }).eq('id', currentElection.id);
+
+  await loadWinners();
+  await loadElections();
+});
 
     resetBtn.addEventListener('click', async () => {
       if (!confirm('Er du sikker på at du vil nullstille stemmer og vinnere for dette valget?')) return;
