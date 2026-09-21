@@ -49,7 +49,7 @@
         <label for="repToggle"><strong>Aktiver styrekvotering/reservasjon for dette valget</strong> (Sikrer at minst 2 plasser dekkes av spesifisert gruppe hvis de ikke allerede er valgt).</label>
       </div>
       <div id="repDetails" style="display:none; margin-bottom: 15px; background: #eef2f5; padding: 10px; border-radius: 4px;">
-        <p style="margin: 0;">Målgruppe: <strong>Undergruppe</strong> (Sikrer 2 representanter)</p>
+        <p style="margin: 0;">Representasjonskrav: <strong>Kull 1</strong> (Sikrer 2 representanter)</p>
       </div>
 
       <hr>
@@ -58,7 +58,7 @@
       <h3>Kandidater for denne posisjonen</h3>
       <div class="input-group">
         <input type="text" id="candName" placeholder="Kandidatens navn">
-        <input type="text" id="candGroup" placeholder="Gruppe (valgfritt, f.eks. 'Undergruppe')">
+        <input type="text" id="candGroup" placeholder="Gruppe ('kull')">
         <button class="btn" id="addCandBtn">Legg til</button>
       </div>
 
@@ -203,7 +203,7 @@
       repDetails.style.display = enabled ? 'block' : 'none';
       await supabase.from('elections').update({
         representation_enabled: enabled,
-        representation_group: enabled ? 'Undergruppe' : null
+        representation_group: enabled ? '1' : null
       }).eq('id', currentElection.id);
       currentElection.representation_enabled = enabled;
     });
@@ -242,8 +242,8 @@ calcBtn.addEventListener('click', async () => {
       .select('ranking')
       .eq('election_id', currentElection.id);
 
-    // Sjekk hvor mange fra kvotegruppen ("Undergruppe") som allerede har vunnet
-    const targetGroup = 'Undergruppe';
+    // Sjekk hvor mange fra kvotegruppen ("1") som allerede har vunnet
+    const targetGroup = '1';
     let alreadyFilled = 0;
 
     const { data: allWinners } = await supabase
