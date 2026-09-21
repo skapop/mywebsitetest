@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generalforsamling - Stemmegivning</title>
+  <style>
+    :root { --primary: #0056b3; --bg: #f4f6f8; --card: #fff; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 16px; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; }
+    .card { background: var(--card); padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 16px; }
+    h1, h2 { margin-top: 0; }
+    .candidate-btn { display: block; width: 100%; padding: 12px; margin-bottom: 8px; background: #e9ecef; border: 1px solid #ced4da; border-radius: 6px; text-align: left; font-size: 1rem; cursor: pointer; transition: background 0.2s; }
+    .candidate-btn:hover { background: #dee2e6; }
+    .ranking-list { list-style-type: decimal; padding-left: 24px; }
+    .ranking-item { background: #e3f2fd; border: 1px solid #90caf9; padding: 10px; margin-bottom: 6px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+    .remove-btn { background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+    .btn-submit { background: #28a745; color: white; border: none; padding: 14px; width: 100%; border-radius: 6px; font-size: 1.1rem; cursor: pointer; margin-top: 10px; }
+    .btn-submit:disabled { background: #6c757d; cursor: not-allowed; }
+    .winner-card { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 20px; border-radius: 8px; text-align: center; font-size: 1.3rem; font-weight: bold; }
+    .voter-info { font-size: 0.85rem; color: #6c757d; text-align: right; margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="voter-info">Din ID: <span id="voterCodeDisplay"></span></div>
+
+    <!-- Venter / Aktivt Valg -->
+    <div id="mainContent">
+      <div class="card" id="statusCard">
+        <h2 id="statusTitle">Laster valg...</h2>
+        <p id="statusDesc">Vennligst vent mens admin forbereder neste valgomgang.</p>
+      </div>
+
+      <!-- Stemmeskjema -->
+      <div class="card" id="votingCard" style="display: none;">
+        <h2 id="posTitle"></h2>
+        <p>Trykk på kandidatene i den rekkefølgen du ønsker å prioritere dem.</p>
+        
+        <h3>Kandidater</h3>
+        <div id="candidateButtons"></div>
+
+        <h3>Din prioritering:</h3>
+        <ol id="rankingList" class="ranking-list"></ol>
+
+        <button id="submitVoteBtn" class="btn-submit">Send inn stemme</button>
+      </div>
+
+      <!-- Vinner / Resultat -->
+      <div class="winner-card" id="winnerCard" style="display: none;">
+        <div id="winnerText"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+    // SUPABASE CONFIGURATION - ERSTATT MED DINE NØKLER
+    const SUPABASE_URL = 'https://qtsfzbqkgjifcfceihre.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_4IZSLlq7DM_vyw_V0tUj9w_TlZ7Zswu';
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Generer eller hent anonym stemmekode for denne nettleseren
+    let voterCode = localStorage.getItem('gf_voter_code');
+    if (!voterCode) {
+      voterCode = 'voter_' + Math.random().toString(36).substring(2, 10);
+      localStorage.setItem('gf_voter_code', voterCode);
+    }
+    document.getElementById('voterCodeDisplay').textContent = voterCode;
+
+    let activeElection = null;
+    let candidates = [];
+    let userRanking = [];
+    let hasVoted = false;
+
+    const statusTitle = document.getElementById('statusTitle');
+    const statusDesc = document.getElementById('statusDesc');
+    const votingCard = document.getElementById('votingCard');
+    const posTitle = document.getElementById('posTitle');
+    const candidateButtons = document.getElementById('candidateButtons');
+    const rankingList = document.getElementById('rankingList');
+    const submitVoteBtn = document.getElementById('submitVoteBtn');
+    const winnerCard = document.getElementById('winnerCard');
+    const winnerText = document.getElementById('winnerText');
+
+    async function checkState() {
+      // Finn det aktuelt aktive valget eller det sist avsluttede med synlig resultat
+      const { data: elections } = await supabase.from('elections').select('*').order('position_number', { ascending: true });
+
+      if (!elections) return;
+
+      const active = elections.find(e => e.status === 'active');
+      const finishedWithResult = elections.slice().reverse().find(e => e.status === 'finished' && e.result_visible);
+
+      if (active) {
+        if (!activeElection || activeElection.id !== active.id) {
+          activeElection = active;
+          userRanking = [];
+          hasVoted = false;
+          await loadActiveElection();
+        } else {
+          await checkIfVoted();
+        }
+      } else if (finishedWithResult) {
+        activeElection = finishedWithResult;
+        await showWinner(finishedWithResult);
+      } else {
+        activeElection = null;
+        showWaiting('Ingen aktiv avstemning', 'Neste valgomgang har ikke startet ennå. Siden oppdateres automatisk.');
+      }
+    }
+
+    async function loadActiveElection() {
+      winnerCard.style.display = 'none';
+
+      // Sjekk om bruker allerede har stemt
+      await checkIfVoted();
+
+      if (hasVoted) {
+        showWaiting(activeElection.position_name, 'Takk! Din stemme er registrert. Venter på at avstemningen avsluttes...');
+        return;
+      }
+
+      posTitle.textContent = `Stem på: ${activeElection.position_name}`;
+      
+      // Hent kandidater
+      const { data } = await supabase.from('candidates').select('*').eq('election_id', activeElection.id);
+      candidates = data || [];
+
+      renderCandidates();
+      renderRanking();
+
+      statusTitle.textContent = `Avstemning pågår`;
+      statusDesc.textContent = `Aktiv posisjon: ${activeElection.position_name}`;
+      votingCard.style.display = 'block';
+    }
+
+    async function checkIfVoted() {
+      if (!activeElection) return;
+      const { data } = await supabase.from('votes')
+        .select('id')
+        .eq('election_id', activeElection.id)
+        .eq('voter_code', voterCode)
+        .maybeSingle();
+      
+      if (data) {
+        hasVoted = true;
+      }
+    }
+
+    function renderCandidates() {
+      candidateButtons.innerHTML = '';
+      candidates.forEach(c => {
+        if (!userRanking.includes(c.id)) {
+          const btn = document.createElement('button');
+          btn.className = 'candidate-btn';
+          btn.textContent = c.name + (c.group_name ? ` (${c.group_name})` : '');
+          btn.onclick = () => {
+            userRanking.push(c.id);
+            renderCandidates();
+            renderRanking();
+          };
+          candidateButtons.appendChild(btn);
+        }
+      });
+    }
+
+    function renderRanking() {
+      rankingList.innerHTML = '';
+      userRanking.forEach((candId, idx) => {
+        const cand = candidates.find(c => c.id === candId);
+        const li = document.createElement('li');
+        li.className = 'ranking-item';
+        li.innerHTML = `<span>${cand ? cand.name : ''}</span>
+                        <button class="remove-btn" onclick="removeFromRanking(${idx})">Fjern</button>`;
+        rankingList.appendChild(li);
+      });
+    }
+
+    window.removeFromRanking = (index) => {
+      userRanking.splice(index, 1);
+      renderCandidates();
+      renderRanking();
+    };
+
+    submitVoteBtn.addEventListener('click', async () => {
+      if (userRanking.length === 0) {
+        if (!confirm('Du har ikke valgt noen kandidater. Vil du avgi en blank stemme?')) return;
+      }
+
+      submitVoteBtn.disabled = true;
+
+      const { error } = await supabase.from('votes').insert([{
+        election_id: activeElection.id,
+        voter_code: voterCode,
+        ranking: userRanking
+      }]);
+
+      if (error) {
+        alert('Kunne ikke avgi stemme (du har kanskje allerede stemt).');
+      } else {
+        hasVoted = true;
+        votingCard.style.display = 'none';
+        showWaiting(activeElection.position_name, 'Din stemme er registrert. Venter på resultat...');
+      }
+      submitVoteBtn.disabled = false;
+    });
+
+    async function showWinner(election) {
+      votingCard.style.display = 'none';
+      const { data: winners } = await supabase.from('winners')
+        .select('candidates(name)')
+        .eq('election_id', election.id);
+
+      if (winners && winners.length > 0) {
+        const winnerNames = winners.map(w => w.candidates.name).join(', ');
+        statusTitle.textContent = `Resultat: ${election.position_name}`;
+        statusDesc.textContent = 'Valget er fullført.';
+        winnerText.innerHTML = `🏆 Valgt vinner: <br><strong>${winnerNames}</strong>`;
+        winnerCard.style.display = 'block';
+      } else {
+        showWaiting('Venter...', 'Beregner resultat...');
+      }
+    }
+
+    function showWaiting(title, desc) {
+      statusTitle.textContent = title;
+      statusDesc.textContent = desc;
+      votingCard.style.display = 'none';
+      winnerCard.style.display = 'none';
+    }
+
+    // Lytt til sanntidsoppdateringer fra Supabase
+    function subscribeRealtime() {
+      supabase.channel('public-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'elections' }, () => checkState())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'winners' }, () => checkState())
+        .subscribe();
+    }
+
+    checkState();
+    subscribeRealtime();
+  </script>
+</body>
+</html>
