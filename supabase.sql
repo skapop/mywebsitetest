@@ -20,6 +20,7 @@ create table elections (
   representation_enabled boolean not null default false,
   representation_group text,
   representation_required integer not null default 0,
+  result_visible boolean not null default false,
   created_at timestamptz not null default now()
 );
 

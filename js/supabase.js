@@ -18,14 +18,9 @@ const sb = SUPABASE_CONFIGURED
   : null;
 
 const positionsTemplate = [
-  ["leder", "Leder", 1],
-  ["nestleder", "Nestleder", 1],
-  ["okonomi", "Økonomiansvarlig", 1],
-  ["pr", "PR-ansvarlig", 1],
-  ["bedrift", "Bedriftsansvarlig", 1],
-  ["hbar", "HBAR-ansvarlig", 1],
-  ["arrangement", "Arrangementsansvarlig", 1],
-  ["internasjonalt", "Internasjonalt ansvarlig", 1],
+  ["leder", "Leder", 1], ["nestleder", "Nestleder", 1], ["okonomi", "Økonomiansvarlig", 1],
+  ["pr", "PR-ansvarlig", 1], ["bedrift", "Bedriftsansvarlig", 1], ["hbar", "HBAR-ansvarlig", 1],
+  ["arrangement", "Arrangementsansvarlig", 1], ["internasjonalt", "Internasjonalt ansvarlig", 1],
   ["styre", "Styremedlemmer", 4]
 ];
 
@@ -33,7 +28,8 @@ function makeLocalState() {
   return {
     positions: positionsTemplate.map(([id, name, seats], i) => ({
       id, name, seats, positionNumber: i + 1, candidates: [],
-      groupRule: { enabled: false, group: "", required: 2 }, status: "not_started"
+      groupRule: { enabled: false, group: "", required: 2 }, status: "not_started",
+      resultVisible: false
     })),
     active: null,
     results: {}
@@ -41,10 +37,7 @@ function makeLocalState() {
 }
 
 async function dbLoadState() {
-  const { data: elections, error } = await sb
-    .from("elections")
-    .select("*")
-    .order("position_number");
+  const { data: elections, error } = await sb.from("elections").select("*").order("position_number");
   if (error) throw error;
 
   const ids = elections.map(e => e.id);
@@ -62,6 +55,7 @@ async function dbLoadState() {
     seats: e.seats,
     positionNumber: e.position_number,
     status: e.status === "active" ? "active" : e.status === "finished" ? "done" : "not_started",
+    resultVisible: !!e.result_visible,
     groupRule: {
       enabled: !!e.representation_enabled,
       group: e.representation_group || "",
@@ -83,8 +77,9 @@ async function dbEnsurePositions() {
   const missing = positionsTemplate
     .map(([id, name, seats], i) => ({
       position_key: id, position_name: name, position_number: i + 1, seats,
-      status: "waiting", representation_enabled: id === "styre" ? false : false,
-      representation_group: null, representation_required: id === "styre" ? 2 : 0
+      status: "waiting", representation_enabled: false,
+      representation_group: null, representation_required: id === "styre" ? 2 : 0,
+      result_visible: false
     }))
     .filter(x => !existing.has(x.position_key));
   if (missing.length) {
@@ -95,8 +90,7 @@ async function dbEnsurePositions() {
 
 async function dbSetPosition(position, status) {
   if (position.dbId == null) {
-    const { data, error } = await sb.from("elections")
-      .select("id").eq("position_key", position.id).single();
+    const { data, error } = await sb.from("elections").select("id").eq("position_key", position.id).single();
     if (error) throw error;
     position.dbId = data.id;
   }
@@ -110,13 +104,60 @@ async function dbSetPosition(position, status) {
   if (error) throw error;
 }
 
+async function dbSetResultVisible(position, visible) {
+  if (position.dbId == null) {
+    const { data, error } = await sb.from("elections").select("id").eq("position_key", position.id).single();
+    if (error) throw error;
+    position.dbId = data.id;
+  }
+  const { error } = await sb.from("elections").update({ result_visible: !!visible }).eq("id", position.dbId);
+  if (error) throw error;
+  position.resultVisible = !!visible;
+}
+
+async function dbGetVisibleResult() {
+  const { data: elections, error } = await sb.from("elections")
+    .select("id,position_name,position_number,result_visible")
+    .eq("status", "finished")
+    .eq("result_visible", true)
+    .order("position_number", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  if (!elections?.length) return null;
+
+  const election = elections[0];
+  const { data: winners, error: winnerError } = await sb.from("winners")
+    .select("candidate_id,vote_count")
+    .eq("election_id", election.id);
+  if (winnerError) throw winnerError;
+  if (!winners?.length) return null;
+
+  const ids = winners.map(w => w.candidate_id);
+  const { data: candidates, error: candidateError } = await sb.from("candidates")
+    .select("id,name")
+    .in("id", ids);
+  if (candidateError) throw candidateError;
+
+  const byId = new Map((candidates || []).map(c => [String(c.id), c]));
+  return {
+    positionName: election.position_name,
+    positionNumber: election.position_number,
+    winners: winners.map(w => ({
+      id: w.candidate_id,
+      name: byId.get(String(w.candidate_id))?.name || String(w.candidate_id),
+      voteCount: w.vote_count
+    }))
+  };
+}
+
 async function dbSaveCandidate(position, candidate) {
-  if (position.dbId == null) await dbLoadState();
+  if (position.dbId == null) {
+    const { data, error } = await sb.from("elections").select("id").eq("position_key", position.id).single();
+    if (error) throw error;
+    position.dbId = data.id;
+  }
   const { error } = await sb.from("candidates").upsert({
-    id: candidate.id,
-    election_id: position.dbId,
-    name: candidate.name,
-    group_name: candidate.group || null
+    id: candidate.id, election_id: position.dbId, name: candidate.name, group_name: candidate.group || null
   });
   if (error) throw error;
 }
@@ -127,11 +168,7 @@ async function dbDeleteCandidate(candidateId) {
 }
 
 async function dbInsertVote(position, voterCode, ranking) {
-  const { error } = await sb.from("votes").insert({
-    election_id: position.dbId,
-    voter_code: voterCode,
-    ranking
-  });
+  const { error } = await sb.from("votes").insert({ election_id: position.dbId, voter_code: voterCode, ranking });
   if (error) throw error;
 }
 
@@ -142,7 +179,11 @@ async function dbGetVotes(position) {
 }
 
 async function dbSaveWinners(position, result) {
-  const rows = result.elected.map(id => ({ election_id: position.dbId, candidate_id: id, vote_count: result.counts?.[id] ?? null }));
+  const { error: deleteError } = await sb.from("winners").delete().eq("election_id", position.dbId);
+  if (deleteError) throw deleteError;
+  const rows = result.elected.map(id => ({
+    election_id: position.dbId, candidate_id: id, vote_count: result.counts?.[id] ?? null
+  }));
   if (rows.length) {
     const { error } = await sb.from("winners").insert(rows);
     if (error) throw error;

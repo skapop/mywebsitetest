@@ -1,11 +1,13 @@
 let state = { positions: [], active: null, results: {} };
 let currentPosition = null;
+let selectedIds = [];
+let submitted = false;
 
 async function loadState() {
   try {
-    if (SUPABASE_CONFIGURED) state = await dbLoadState();
-    else state = JSON.parse(localStorage.getItem("gfPrototypeLocal") || "null") || makeLocalState();
+    state = SUPABASE_CONFIGURED ? await dbLoadState() : JSON.parse(localStorage.getItem("gfPrototypeLocal") || "null") || makeLocalState();
     render();
+    await loadVisibleResult();
   } catch (e) {
     console.error(e);
     document.getElementById("instruction").textContent = "Kunne ikke hente avstemningen. Sjekk Supabase-oppsettet.";
@@ -19,75 +21,147 @@ function render() {
   const area = document.getElementById("voteArea");
   const submit = document.getElementById("submitVote");
   const codeBox = document.getElementById("voterCodeBox");
-  area.innerHTML = ""; submit.hidden = true; codeBox.hidden = true;
+  const submittedMessage = document.getElementById("submittedMessage");
+  if (!area) return;
 
-  if (!state.active) { badge.textContent = "Ikke startet"; title.textContent = "Ingen aktiv avstemning"; instruction.textContent = "Vent på at admin starter neste avstemning."; return; }
-  const p = state.positions.find(x => x.id === state.active); if (!p) return;
+  area.innerHTML = "";
+  submit.hidden = true;
+  codeBox.hidden = true;
+  if (submittedMessage) submittedMessage.hidden = true;
+
+  if (!state.active) {
+    badge.textContent = "Ikke startet";
+    title.textContent = "Ingen aktiv avstemning";
+    instruction.textContent = "Vent på at admin starter neste avstemning.";
+    currentPosition = null;
+    selectedIds = [];
+    submitted = false;
+    return;
+  }
+
+  const p = state.positions.find(x => x.id === state.active);
+  if (!p) return;
+  if (!currentPosition || currentPosition.id !== p.id) { selectedIds = []; submitted = false; }
   currentPosition = p;
-  badge.textContent = "Pågår"; title.textContent = p.name;
-  instruction.textContent = "Dra kandidatene i ønsket rekkefølge. Kandidater du utelater blir ikke rangert.";
+
+  badge.textContent = "Pågår";
+  title.textContent = p.name;
+  instruction.textContent = "Trykk på kandidatene i den rekkefølgen du ønsker å stemme.";
   codeBox.hidden = false;
+  if (submitted) {
+    if (submittedMessage) submittedMessage.hidden = false;
+    instruction.textContent = "Stemmen er registrert. Vent på neste avstemning.";
+    return;
+  }
 
-  const selected = document.createElement("div"); selected.className = "dropzone"; selected.id = "ranked";
-  const unselected = document.createElement("div"); unselected.className = "dropzone muted-box"; unselected.id = "unranked";
-  p.candidates.forEach((c, i) => {
-    const el = makeItem(c, i + 1); selected.appendChild(el);
+  const selected = document.createElement("div");
+  selected.className = "dropzone";
+  selected.id = "ranked";
+  selected.innerHTML = selectedIds.length ? "" : '<div class="empty-ranking">Ingen kandidater valgt ennå.</div>';
+  selectedIds.forEach((id, i) => {
+    const c = p.candidates.find(x => String(x.id) === String(id));
+    if (c) selected.appendChild(makeRankItem(c, i + 1));
   });
-  area.innerHTML = `<h3>Prioritert rekkefølge</h3>`; area.appendChild(selected);
-  area.insertAdjacentHTML("beforeend", `<h3>Ikke valgt</h3>`); area.appendChild(unselected);
-  p.candidates.forEach(c => addDragToZone(c, unselected));
-  selected.querySelectorAll(".rank-item").forEach(addDrag);
-  renumber(); submit.hidden = false;
+
+  const candidates = document.createElement("div");
+  candidates.className = "candidate-list";
+  p.candidates.forEach(c => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "candidate-button";
+    const chosen = selectedIds.includes(String(c.id));
+    button.disabled = chosen;
+    button.innerHTML = `<span><strong>${escapeHtml(c.name)}</strong>${c.group ? `<small>${escapeHtml(c.group)}</small>` : ""}</span><b>${chosen ? "Valgt" : "Velg"}</b>`;
+    button.onclick = () => addCandidate(c.id);
+    candidates.appendChild(button);
+  });
+
+  area.innerHTML = `<h3>Velg kandidater</h3><p>Trykk på kandidatene i ønsket rekkefølge. Du kan utelate kandidater.</p>`;
+  area.appendChild(candidates);
+  area.insertAdjacentHTML("beforeend", "<h3>Din stemmerekkefølge</h3>");
+  area.appendChild(selected);
+  submit.hidden = false;
 }
 
-function makeItem(c, rank) {
-  const el = document.createElement("div"); el.className = "rank-item"; el.draggable = true; el.dataset.id = c.id;
-  el.innerHTML = `<span class="rank-number">${rank}</span><span>${escapeHtml(c.name)}</span><button class="tiny secondary" type="button">×</button>`;
-  el.querySelector("button").onclick = () => { document.getElementById("unranked").appendChild(el); renumber(); };
+function makeRankItem(c, rank) {
+  const el = document.createElement("div");
+  el.className = "rank-item";
+  el.innerHTML = `<span class="rank-number">${rank}</span><span class="rank-info"><strong>${escapeHtml(c.name)}</strong>${c.group ? `<small>${escapeHtml(c.group)}</small>` : ""}</span><button type="button" class="remove-button" aria-label="Fjern kandidat">×</button>`;
+  el.querySelector(".remove-button").onclick = () => removeCandidate(c.id);
   return el;
 }
-function addDragToZone(c, zone) {
-  const el = makeUnrankedItem(c); zone.appendChild(el); addDrag(el);
+
+function addCandidate(id) {
+  id = String(id);
+  if (!selectedIds.includes(id)) { selectedIds.push(id); render(); }
 }
-function makeUnrankedItem(c) {
-  const el = document.createElement("div"); el.className = "rank-item unranked-item"; el.draggable = true; el.dataset.id = c.id;
-  el.innerHTML = `<span class="rank-number">–</span><span>${escapeHtml(c.name)}</span>`;
-  return el;
+
+function removeCandidate(id) {
+  selectedIds = selectedIds.filter(x => String(x) !== String(id));
+  render();
 }
-function addDrag(el) {
-  el.addEventListener("dragstart", e => e.dataTransfer.setData("text/plain", el.dataset.id));
-  el.addEventListener("dragover", e => e.preventDefault());
-  el.addEventListener("drop", e => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); const x = listById(id); if (x && x !== el) { el.parentNode.insertBefore(x, el); renumber(); } });
-}
-function listById(id) { return [...document.querySelectorAll(".rank-item")].find(x => x.dataset.id === id); }
-function renumber() { document.querySelectorAll("#ranked .rank-item").forEach((x, i) => x.querySelector(".rank-number").textContent = i + 1); }
-function escapeHtml(s = "") { return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m])); }
 
 async function submit() {
+  if (!currentPosition || submitted) return;
   const code = document.getElementById("voterCode").value.trim();
   if (SUPABASE_CONFIGURED && !code) return alert("Skriv inn stemmekoden din.");
-  const ids = [...document.querySelectorAll("#ranked .rank-item")].map(x => x.dataset.id);
-  if (!ids.length) return alert("Velg minst én kandidat.");
+  if (!selectedIds.length) return alert("Velg minst én kandidat.");
+  const button = document.getElementById("submitVote");
+  button.disabled = true;
   try {
-    if (SUPABASE_CONFIGURED) await dbInsertVote(currentPosition, code, ids);
+    if (SUPABASE_CONFIGURED) await dbInsertVote(currentPosition, code, selectedIds);
     else {
-      const key = "votes_" + currentPosition.id; const votes = JSON.parse(localStorage.getItem(key) || "[]"); votes.push(ids); localStorage.setItem(key, JSON.stringify(votes));
+      const key = "votes_" + currentPosition.id;
+      const votes = JSON.parse(localStorage.getItem(key) || "[]");
+      votes.push(selectedIds); localStorage.setItem(key, JSON.stringify(votes));
     }
-    document.getElementById("submitVote").hidden = true;
-    document.getElementById("instruction").textContent = "Stemmen er registrert. Vent på neste avstemning.";
+    submitted = true;
+    render();
   } catch (e) {
-    if (String(e.message).includes("duplicate") || String(e.message).includes("unique")) alert("Denne stemmekoden har allerede stemt.");
+    button.disabled = false;
+    if (/duplicate|unique/i.test(String(e.message))) alert("Denne stemmekoden har allerede stemt.");
     else alert("Kunne ikke registrere stemmen: " + e.message);
   }
 }
 
 document.getElementById("submitVote").onclick = submit;
 
+async function loadVisibleResult() {
+  const resultView = document.getElementById("resultView");
+  const resultContent = document.getElementById("resultContent");
+  if (!resultView || !resultContent) return;
+
+  if (!SUPABASE_CONFIGURED) {
+    const local = JSON.parse(localStorage.getItem("gfResultVisible") || "null");
+    if (!local?.visible) { resultView.hidden = true; return; }
+    const p = state.positions.find(x => x.id === local.positionId);
+    const result = state.results?.[local.positionId];
+    if (!p || !result) { resultView.hidden = true; return; }
+    resultView.hidden = false;
+    resultContent.innerHTML = `<div class="result-winner">${result.elected.map(id => escapeHtml(p.candidates.find(c => String(c.id) === String(id))?.name || id)).join("<br>")}</div>`;
+    return;
+  }
+
+  const result = await dbGetVisibleResult();
+  if (!result) { resultView.hidden = true; return; }
+  resultView.hidden = false;
+  resultContent.innerHTML = `<div class="result-position">${escapeHtml(result.positionName)}</div><div class="result-winner">${result.winners.map(w => escapeHtml(w.name)).join("<br>")}</div>`;
+}
+
 function renderLogo() {
   const data = localStorage.getItem("gfLogo");
   const el = document.getElementById("headerLogo");
-  if (data) el.innerHTML = `<img src="${data}" alt="Logo">`;
+  if (el && data) el.innerHTML = `<img src="${data}" alt="Logo">`;
 }
+function escapeHtml(s = "") { return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[m])); }
+
 renderLogo();
 loadState();
-setInterval(async () => { if (SUPABASE_CONFIGURED) { try { state = await dbLoadState(); render(); } catch (_) {} } }, 2000);
+setInterval(async () => {
+  if (!SUPABASE_CONFIGURED) return;
+  try {
+    const newState = await dbLoadState();
+    if (newState.active !== state.active) { state = newState; render(); }
+    await loadVisibleResult();
+  } catch (_) {}
+}, 2000);

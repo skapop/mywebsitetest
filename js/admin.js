@@ -110,12 +110,24 @@ function renderEditor() {
   if (controls.querySelector("#start")) controls.querySelector("#start").onclick = async () => {
     if (!p.candidates.length || p.candidates.some(c => !c.name.trim())) return alert("Legg inn alle kandidater først.");
     state.positions.forEach(x => { if (x.id !== p.id && x.status === "active") x.status = "done"; });
-    p.status = "active"; state.active = p.id; saveLocal();
-    try { await persistPosition(p); } catch (e) { alert(e.message); }
+    p.status = "active"; p.resultVisible = false; state.active = p.id; saveLocal();
+    try { await persistPosition(p); if (SUPABASE_CONFIGURED) await dbSetResultVisible(p, false); } catch (e) { alert(e.message); }
     renderList(); renderEditor();
   };
   if (controls.querySelector("#stop")) controls.querySelector("#stop").onclick = () => stopElection(p);
-  if (controls.querySelector("#next")) controls.querySelector("#next").onclick = () => renderResult(p, state.results[p.id] || null);
+  if (controls.querySelector("#next")) controls.querySelector("#next").onclick = async () => {
+    try {
+      if (SUPABASE_CONFIGURED) await dbSetResultVisible(p, true);
+      else {
+        p.resultVisible = true;
+        saveLocal();
+      }
+      renderResult(p, state.results[p.id] || null);
+    } catch (e) {
+      console.error(e);
+      alert("Kunne ikke vise resultatet: " + e.message);
+    }
+  };
 }
 
 async function stopElection(p) {
@@ -123,8 +135,8 @@ async function stopElection(p) {
     const votes = SUPABASE_CONFIGURED ? await dbGetVotes(p) : JSON.parse(localStorage.getItem("votes_" + p.id) || "[]");
     if (!votes.length && !confirm("Ingen stemmer er registrert. Fortsette?")) return;
     const res = stvCount(p.candidates, votes, p.seats);
-    state.results[p.id] = res; p.status = "done"; state.active = null; saveLocal();
-    if (SUPABASE_CONFIGURED) { await dbSetPosition(p, "done"); await dbSaveWinners(p, res); }
+    state.results[p.id] = res; p.status = "done"; p.resultVisible = false; state.active = null; saveLocal();
+    if (SUPABASE_CONFIGURED) { await dbSetPosition(p, "done"); await dbSaveWinners(p, res); await dbSetResultVisible(p, false); }
     renderList(); renderEditor(); renderResult(p, res);
   } catch (e) { console.error(e); alert("Kunne ikke stoppe valget: " + e.message); }
 }
